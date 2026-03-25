@@ -13,7 +13,7 @@ st.set_page_config(page_title="Jayden Coffee 시스템", layout="wide")
 
 HISTORY_FILE = "jayden_sales_history.csv"
 CLIENTS_FILE = "jayden_clients.json"
-SEAL_IMAGE_PATH = "도장.png" 
+SEAL_IMAGE_PATH = "stamp.png" 
 
 PROVIDER = {
     "상호": "제이든 커피 로스터스 (Jayden Coffee Roasters)",
