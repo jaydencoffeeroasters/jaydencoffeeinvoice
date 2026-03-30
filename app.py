@@ -1,3 +1,116 @@
+import streamlit as st
+import datetime
+import pandas as pd
+import os
+import json
+import base64
+import streamlit.components.v1 as components
+
+# ==========================================
+# 1. 공급자 정보 및 데이터 로드 
+# ==========================================
+st.set_page_config(page_title="Jayden Coffee 시스템", layout="wide")
+
+HISTORY_FILE = "jayden_sales_history.csv"
+CLIENTS_FILE = "jayden_clients.json"
+SEAL_IMAGE_PATH = "stamp.png" 
+
+PROVIDER = {
+    "상호": "제이든 커피 로스터스 (Jayden Coffee Roasters)",
+    "등록번호": "409-41-27363",
+    "대표자": "이재용",
+    "주소": "경기도 하남시 덕풍북로6번길 122, 1층(덕풍동)",
+    "TEL": "02-442-0168",
+    "계좌": "국민은행 810101-04-162168 (예금주: 이재용)"
+}
+
+def load_clients():
+    if not os.path.exists(CLIENTS_FILE): return {}
+    with open(CLIENTS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_clients(data):
+    with open(CLIENTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+def load_history():
+    if not os.path.exists(HISTORY_FILE):
+        return pd.DataFrame(columns=["날짜", "연월", "거래처", "품목", "수량(kg)", "매출액(원)"])
+    df = pd.read_csv(HISTORY_FILE)
+    df["날짜"] = pd.to_datetime(df["날짜"], format="%Y-%m-%d", errors='coerce').dt.date
+    return df.dropna(subset=["날짜"])
+
+clients = load_clients()
+
+# ==========================================
+# 2. 강력한 CSS (인쇄 설정 유지)
+# ==========================================
+def get_base64_image(path):
+    if os.path.exists(path):
+        with open(path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode()
+    else:
+        st.warning(f"📁 '{path}' 파일을 찾을 수 없습니다. 도장 없이 발행됩니다.")
+        return ""
+
+seal_base64 = get_base64_image(SEAL_IMAGE_PATH)
+
+COMMON_STYLE = f"""
+<style>
+/* 1. 화면용 스타일 */
+.report-box {{ 
+    border: 2px solid #000; padding: 30px; background: white; 
+    color: black !important; font-family: 'Malgun Gothic', sans-serif; 
+    margin-bottom: 20px;
+}}
+.info-container {{ width: 100%; table-layout: fixed; border-collapse: collapse; border: none; margin-bottom: 10px; }}
+.biz-table {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
+.biz-table td {{ border: 1px solid #000; padding: 6px; text-align: center; font-size: 11px; height: 28px; color: black; }}
+.title-td {{ background: #f2f2f2 !important; font-weight: bold; width: 30%; }}
+.content-td {{ width: 70%; text-align: left !important; padding-left: 10px !important; position: relative; }}
+
+.item-table {{ width: 100%; border-collapse: collapse; margin-top: 15px; table-layout: fixed; }}
+.item-table th, .item-table td {{ border: 1px solid #000; padding: 8px; text-align: center; font-size: 12px; color: black; }}
+.item-table th {{ background: #f2f2f2; }}
+
+.footer-info {{ font-size: 15px; font-weight: bold; margin-top: 20px; border-top: 2px solid #000; padding-top: 10px; color: black; }}
+
+/* 도장 배치 스타일 */
+.stamp-image {{
+    position: absolute;
+    right: 15px; 
+    top: -8px; 
+    width: 45px; 
+    height: 45px;
+    opacity: 0.95; 
+}}
+
+/* 인쇄용 강력한 스타일 */
+@media print {{
+    div[data-testid="stToolbar"], header, footer, [data-testid="stSidebar"], [role="tablist"], .hide-on-print, .stButton {{
+        display: none !important;
+    }}
+    body {{ background: white !important; }}
+    * {{ -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }}
+    .main .block-container {{ padding: 0 !important; margin: 0 !important; }}
+    
+    .report-box {{ 
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        border: 2px solid #000 !important;
+        margin: 0 !important;
+        padding: 20px !important;
+        z-index: 9999;
+        background: white !important;
+        visibility: visible !important;
+    }}
+}}
+</style>
+"""
+st.markdown(COMMON_STYLE, unsafe_allow_html=True)
+
 st.markdown('<div class="hide-on-print"><h1 style="text-align:center;">☕ Jayden Coffee Roasters</h1></div>', unsafe_allow_html=True)
 tab1, tab2, tab3 = st.tabs(["🧾 명세서 발행", "📊 내역 조회/분석", "⚙️ 관리"])
 
@@ -127,3 +240,88 @@ with tab1:
                 df_old = load_history()
                 pd.concat([df_old, pd.DataFrame(save_records)], ignore_index=True).to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig")
                 st.success(f"✅ 매출 장부에 기록되었습니다.")
+
+# ==========================================
+# 탭 2: 내역 조회
+# ==========================================
+with tab2:
+    df = load_history()
+    if not df.empty:
+        st.subheader("📊 기간별 매출 및 거래처 분석")
+        dr = st.date_input("조회 기간 설정", [datetime.date.today().replace(day=1), datetime.date.today()])
+        
+        if len(dr) == 2:
+            df_f = df[(df["날짜"] >= dr[0]) & (df["날짜"] <= dr[1])].copy()
+            
+            st.markdown(f"""<div style="background:#f0f2f6;padding:20px;border-radius:15px;text-align:center;border:1px solid #ddd; margin-bottom:20px;">
+                <h2 style="margin:0; color:#333;">📅 {dr[0]} ~ {dr[1]} 매출 합계</h2>
+                <h1 style="color:#FF4B4B; margin:10px 0;">{df_f['매출액(원)'].sum():,} 원 / {df_f['수량(kg)'].sum():,} kg</h1>
+            </div>""", unsafe_allow_html=True)
+            
+            col_left, col_right = st.columns([2, 3])
+            
+            with col_left:
+                st.write("🏢 **거래처별 합산 통계**")
+                stat = df_f.groupby("거래처")[["수량(kg)", "매출액(원)"]].sum().sort_values("매출액(원)", ascending=False)
+                st.dataframe(stat.style.format("{:,}"), use_container_width=True)
+                
+                sel_c = st.selectbox("상세 내역을 볼 거래처 선택", ["전체보기"] + list(stat.index))
+
+            with col_right:
+                st.write(f"📝 **{sel_c} 상세 내역**")
+                v_df = df_f if sel_c == "전체보기" else df_f[df_f["거래처"] == sel_c]
+                
+                if not v_df.empty:
+                    if sel_c != "전체보기":
+                        st.info(f"📍 {sel_c} 합계 - {v_df['수량(kg)'].sum():,}kg / {v_df['매출액(원)'].sum():,}원")
+                    
+                    for idx, row in v_df.sort_index(ascending=False).iterrows():
+                        c = st.columns([3, 5, 2, 1])
+                        c[0].write(row['날짜']); c[1].write(f"**{row['거래처']}**|{row['품목']}({row['수량(kg)']}kg)"); c[2].write(f"{row['매출액(원)']:,}원")
+                        if c[3].button("🗑️", key=f"del_{idx}"):
+                            df_full = pd.read_csv(HISTORY_FILE)
+                            df_full.drop(idx).to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig"); st.rerun()
+                else:
+                    st.warning("내역이 없습니다.")
+    else: st.info("기록된 거래 데이터가 없습니다.")
+
+# ==========================================
+# 탭 3: 관리
+# ==========================================
+with tab3:
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.subheader("🏢 거래처 정보 관리")
+        mode = st.radio("작업", ["새로 등록", "기존 수정"], horizontal=True)
+        t_n = st.selectbox("수정할 거래처", list(clients.keys())) if mode == "기존 수정" else ""
+        curr = clients.get(t_n, {"등록번호":"", "대표자":"", "주소":"", "TEL":""})
+        with st.form("client_form"):
+            n = st.text_input("상호", value=t_n if mode == "기존 수정" else "")
+            r = st.text_input("사업자번호", value=curr.get("등록번호",""))
+            p = st.text_input("대표자", value=curr.get("대표자",""))
+            a = st.text_input("주소", value=curr.get("주소",""))
+            if st.form_submit_button("저장"):
+                if n:
+                    pr = clients.get(t_n, {}).get("prices", {}) if mode == "기존 수정" else {}
+                    clients[n] = {"등록번호": r, "대표자": p, "주소": a, "prices": pr}
+                    if mode == "기존 수정" and t_n != n: del clients[t_n]
+                    save_clients(clients); st.rerun()
+
+    with col_r:
+        st.subheader("☕ 원두 단가 관리")
+        bt = st.selectbox("거래처 선택", ["선택"] + list(clients.keys()))
+        if bt != "선택":
+            if "en_edit" not in st.session_state: st.session_state.en_edit = ""; st.session_state.ep_edit = 0; st.session_state.on_edit = ""
+            en = st.text_input("원두명", value=st.session_state.en_edit)
+            ep = st.number_input("단가", min_value=0, step=500, value=st.session_state.ep_edit)
+            if st.button("💾 저장/수정"):
+                if en:
+                    if st.session_state.on_edit and st.session_state.on_edit != en: del clients[bt]["prices"][st.session_state.on_edit]
+                    clients[bt]["prices"][en] = int(ep); save_clients(clients)
+                    st.session_state.en_edit = ""; st.session_state.ep_edit = 0; st.session_state.on_edit = ""; st.rerun()
+            for item, price in clients[bt]["prices"].items():
+                bc = st.columns([4, 2, 1, 1])
+                bc[0].write(item); bc[1].write(f"{price:,}원")
+                if bc[2].button("✏️", key=f"e_{bt}_{item}"):
+                    st.session_state.en_edit = item; st.session_state.ep_edit = price; st.session_state.on_edit = item; st.rerun()
+                if bc[3].button("🗑️", key=f"d_{bt}_{item}"): del clients[bt]["prices"][item]; save_clients(clients); st.rerun()
