@@ -253,15 +253,32 @@ with tab2:
         if len(dr) == 2:
             df_f = df[(df["날짜"] >= dr[0]) & (df["날짜"] <= dr[1])].copy()
             
+            # 1. 전체 기간 총 매출 요약
             st.markdown(f"""<div style="background:#f0f2f6;padding:20px;border-radius:15px;text-align:center;border:1px solid #ddd; margin-bottom:20px;">
-                <h2 style="margin:0; color:#333;">📅 {dr[0]} ~ {dr[1]} 매출 합계</h2>
+                <h2 style="margin:0; color:#333;">📅 {dr[0]} ~ {dr[1]} 총 매출 합계</h2>
                 <h1 style="color:#FF4B4B; margin:10px 0;">{df_f['매출액(원)'].sum():,} 원 / {df_f['수량(kg)'].sum():,} kg</h1>
             </div>""", unsafe_allow_html=True)
             
+            # 2. 거래처별 x 월별 매출 피벗 테이블 (한눈에 보기)
+            st.subheader("🏢 거래처별 · 월별 매출 현황 (한눈에 보기)")
+            if not df_f.empty:
+                # 월별 피벗 테이블 생성
+                pivot_df = df_f.pivot_table(index="거래처", columns="연월", values="매출액(원)", aggfunc="sum", fill_value=0)
+                pivot_df["총합계"] = pivot_df.sum(axis=1) # 우측 끝에 거래처별 총합 추가
+                pivot_df = pivot_df.sort_values("총합계", ascending=False)
+                
+                # 하단에 '월별 총 판매 금액' 행 추가
+                pivot_df.loc["[전체 월별 총계]"] = pivot_df.sum(axis=0)
+                
+                st.dataframe(pivot_df.style.format("{:,}"), use_container_width=True)
+            
+            st.write("---")
+            
+            # 3. 상세 내역 조회
             col_left, col_right = st.columns([2, 3])
             
             with col_left:
-                st.write("🏢 **거래처별 합산 통계**")
+                st.write("🏢 **조회 기간 내 거래처별 합산 (수량 포함)**")
                 stat = df_f.groupby("거래처")[["수량(kg)", "매출액(원)"]].sum().sort_values("매출액(원)", ascending=False)
                 st.dataframe(stat.style.format("{:,}"), use_container_width=True)
                 
