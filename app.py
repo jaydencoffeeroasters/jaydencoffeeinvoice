@@ -1,3 +1,9 @@
+st.markdown('<div class="hide-on-print"><h1 style="text-align:center;">☕ Jayden Coffee Roasters</h1></div>', unsafe_allow_html=True)
+tab1, tab2, tab3 = st.tabs(["🧾 명세서 발행", "📊 내역 조회/분석", "⚙️ 관리"])
+
+# ==========================================
+# 탭 1: 명세서 발행
+# ==========================================
 with tab1:
     selected_name = st.selectbox("거래처 선택", ["선택하세요"] + list(clients.keys()), key="main_sel")
     if selected_name != "선택하세요":
@@ -30,9 +36,7 @@ with tab1:
         else:
             cols = st.columns(3)
             for i, item in enumerate(price_data.keys()):
-                # 불러온 수량이 있으면 기본값으로 세팅
                 def_val = loaded_qtys.get(item, 0)
-                # key 값에 load_date를 넣어 날짜 변경 시 UI가 즉각 새로고침 되도록 처리
                 orders[item] = cols[i%3].number_input(f"{item} (kg)", min_value=0, step=1, value=def_val, key=f"ord_{item}_{load_date}")
 
         if st.button("문서 생성 및 매출 저장", type="primary", use_container_width=True):
@@ -120,7 +124,6 @@ with tab1:
                     use_container_width=True
                 )
 
-                # 데이터 저장
                 df_old = load_history()
                 pd.concat([df_old, pd.DataFrame(save_records)], ignore_index=True).to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig")
                 st.success(f"✅ 매출 장부에 기록되었습니다.")
