@@ -241,7 +241,74 @@ with tab1:
                 pd.concat([df_old, pd.DataFrame(save_records)], ignore_index=True).to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig")
                 st.success(f"✅ 매출 장부에 기록되었습니다.")
 
-에어프라이어 180도 3-5분 돌리시면 바삭하게 드실 수있습니다
+# ==========================================
+# 탭 2: 내역 조회
+# ==========================================
+with tab2:
+    df = load_history()
+    if not df.empty:
+        st.subheader("📊 월별 정산 및 거래처 전송용 내역")
+        
+        # 1. 거래 월 선택 (연월 기준)
+        months = sorted(df["연월"].dropna().unique().tolist(), reverse=True)
+        sel_month = st.selectbox("📅 정산할 월을 선택하세요", months)
+
+        if sel_month:
+            df_month = df[df["연월"] == sel_month].copy()
+            
+            # 2. 선택한 월의 거래처별 총합 요약 (수량 및 금액)
+            st.markdown(f"### 🏢 {sel_month} 전체 거래처 요약")
+            month_summary = df_month.groupby("거래처")[["수량(kg)", "매출액(원)"]].sum().reset_index()
+            month_summary = month_summary.sort_values("매출액(원)", ascending=False)
+            
+            st.dataframe(
+                month_summary.style.format({"수량(kg)": "{:,}", "매출액(원)": "{:,}"}),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            st.write("---")
+
+            # 3. 거래처 선택 및 전송용 상세 내역 출력
+            st.markdown("### 📱 거래처 전송용 상세 내역 (캡처용)")
+            sel_client = st.selectbox("내역을 추출할 거래처를 선택하세요", month_summary["거래처"].tolist())
+
+            if sel_client:
+                client_df = df_month[df_month["거래처"] == sel_client].sort_values("날짜")
+                total_qty = int(client_df["수량(kg)"].sum())
+                total_amt = int(client_df["매출액(원)"].sum())
+
+                # 캡처하기 좋은 깔끔한 박스 UI
+                st.info("📌 아래 박스 영역을 캡처하여 거래처에 전달하시면 됩니다.")
+                with st.container(border=True):
+                    st.markdown(f"#### ☕ [{sel_client}] {sel_month} 납품 정산 내역")
+                    st.markdown(f"- **총 납품 수량:** {total_qty:,} kg")
+                    st.markdown(f"- **총 청구 금액:** {total_amt:,} 원")
+                    st.write("---")
+                    
+                    # 같은 날짜 데이터 그룹화하여 대표님이 원하시는 텍스트 양식으로 한 줄 표시
+                    grouped = client_df.groupby("날짜")
+                    for date, group in grouped:
+                        # 날짜 포맷 변경 (예: 2026-03-10 -> 3월 10일)
+                        d_obj = pd.to_datetime(date)
+                        date_str = f"{d_obj.month}월 {d_obj.day}일"
+                        
+                        # 품목 및 수량 문자열 결합 (예: wake 5kg  mute 2kg)
+                        items_str = "  ".join([f"{row['품목']} {int(row['수량(kg)'])}kg" for _, row in group.iterrows()])
+                        daily_amt = int(group["매출액(원)"].sum())
+                        
+                        c1, c2, c3 = st.columns([7, 3, 1])
+                        c1.markdown(f"{date_str} &nbsp;&nbsp;&nbsp; {items_str}", unsafe_allow_html=True)
+                        c2.markdown(f"**{daily_amt:,} 원**")
+                        
+                        # 삭제 버튼
+                        if c3.button("🗑️", key=f"del_{date}"):
+                            df_full = pd.read_csv(HISTORY_FILE)
+                            df_full = df_full.drop(group.index)
+                            df_full.to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig")
+                            st.rerun()
+    else:
+        st.info("기록된 거래 데이터가 없습니다.")
 # ==========================================
 # 탭 3: 관리
 # ==========================================
