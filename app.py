@@ -247,60 +247,57 @@ with tab1:
 with tab2:
     df = load_history()
     if not df.empty:
-        st.subheader("📊 기간별 매출 및 거래처 분석")
-        dr = st.date_input("조회 기간 설정", [datetime.date.today().replace(day=1), datetime.date.today()])
+        st.subheader("📊 월별 정산 및 거래처 전송용 내역")
         
-        if len(dr) == 2:
-            df_f = df[(df["날짜"] >= dr[0]) & (df["날짜"] <= dr[1])].copy()
+        # 1. 거래 월 선택 (연월 기준)
+        months = sorted(df["연월"].dropna().unique().tolist(), reverse=True)
+        sel_month = st.selectbox("📅 정산할 월을 선택하세요", months)
+
+        if sel_month:
+            df_month = df[df["연월"] == sel_month].copy()
             
-            # 1. 전체 기간 총 매출 요약
-            st.markdown(f"""<div style="background:#f0f2f6;padding:20px;border-radius:15px;text-align:center;border:1px solid #ddd; margin-bottom:20px;">
-                <h2 style="margin:0; color:#333;">📅 {dr[0]} ~ {dr[1]} 총 매출 합계</h2>
-                <h1 style="color:#FF4B4B; margin:10px 0;">{df_f['매출액(원)'].sum():,} 원 / {df_f['수량(kg)'].sum():,} kg</h1>
-            </div>""", unsafe_allow_html=True)
+            # 2. 선택한 월의 거래처별 총합 요약 (수량 및 금액)
+            st.markdown(f"### 🏢 {sel_month} 전체 거래처 요약")
+            month_summary = df_month.groupby("거래처")[["수량(kg)", "매출액(원)"]].sum().reset_index()
+            month_summary = month_summary.sort_values("매출액(원)", ascending=False)
             
-            # 2. 거래처별 x 월별 매출 피벗 테이블 (한눈에 보기)
-            st.subheader("🏢 거래처별 · 월별 매출 현황 (한눈에 보기)")
-            if not df_f.empty:
-                # 월별 피벗 테이블 생성
-                pivot_df = df_f.pivot_table(index="거래처", columns="연월", values="매출액(원)", aggfunc="sum", fill_value=0)
-                pivot_df["총합계"] = pivot_df.sum(axis=1) # 우측 끝에 거래처별 총합 추가
-                pivot_df = pivot_df.sort_values("총합계", ascending=False)
-                
-                # 하단에 '월별 총 판매 금액' 행 추가
-                pivot_df.loc["[전체 월별 총계]"] = pivot_df.sum(axis=0)
-                
-                st.dataframe(pivot_df.style.format("{:,}"), use_container_width=True)
+            st.dataframe(
+                month_summary.style.format({"수량(kg)": "{:,}", "매출액(원)": "{:,}"}),
+                use_container_width=True,
+                hide_index=True
+            )
             
             st.write("---")
-            
-            # 3. 상세 내역 조회
-            col_left, col_right = st.columns([2, 3])
-            
-            with col_left:
-                st.write("🏢 **조회 기간 내 거래처별 합산 (수량 포함)**")
-                stat = df_f.groupby("거래처")[["수량(kg)", "매출액(원)"]].sum().sort_values("매출액(원)", ascending=False)
-                st.dataframe(stat.style.format("{:,}"), use_container_width=True)
-                
-                sel_c = st.selectbox("상세 내역을 볼 거래처 선택", ["전체보기"] + list(stat.index))
 
-            with col_right:
-                st.write(f"📝 **{sel_c} 상세 내역**")
-                v_df = df_f if sel_c == "전체보기" else df_f[df_f["거래처"] == sel_c]
-                
-                if not v_df.empty:
-                    if sel_c != "전체보기":
-                        st.info(f"📍 {sel_c} 합계 - {v_df['수량(kg)'].sum():,}kg / {v_df['매출액(원)'].sum():,}원")
+            # 3. 거래처 선택 및 전송용 상세 내역 출력
+            st.markdown("### 📱 거래처 전송용 상세 내역 (캡처용)")
+            sel_client = st.selectbox("내역을 추출할 거래처를 선택하세요", month_summary["거래처"].tolist())
+
+            if sel_client:
+                client_df = df_month[df_month["거래처"] == sel_client].sort_values("날짜")
+                total_qty = client_df["수량(kg)"].sum()
+                total_amt = client_df["매출액(원)"].sum()
+
+                # 캡처하기 좋은 깔끔한 박스 UI
+                st.info("📌 아래 박스 영역을 캡처하여 거래처에 전달하시면 됩니다.")
+                with st.container(border=True):
+                    st.markdown(f"#### ☕ [{sel_client}] {sel_month} 납품 정산 내역")
+                    st.markdown(f"- **총 납품 수량:** {total_qty:,} kg")
+                    st.markdown(f"- **총 청구 금액:** {total_amt:,} 원")
+                    st.write("---")
                     
-                    for idx, row in v_df.sort_index(ascending=False).iterrows():
-                        c = st.columns([3, 5, 2, 1])
-                        c[0].write(row['날짜']); c[1].write(f"**{row['거래처']}**|{row['품목']}({row['수량(kg)']}kg)"); c[2].write(f"{row['매출액(원)']:,}원")
-                        if c[3].button("🗑️", key=f"del_{idx}"):
+                    for idx, row in client_df.iterrows():
+                        c1, c2, c3 = st.columns([6, 3, 1])
+                        c1.write(f"▪️ {row['날짜']} : {row['품목']} ({row['수량(kg)']}kg)")
+                        c2.write(f"**{row['매출액(원)']:,}원**")
+                        
+                        # 삭제 버튼 (데이터 관리를 위해 유지하되 눈에 덜 띄게 우측 배치)
+                        if c3.button("🗑️", key=f"del_{idx}"):
                             df_full = pd.read_csv(HISTORY_FILE)
-                            df_full.drop(idx).to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig"); st.rerun()
-                else:
-                    st.warning("내역이 없습니다.")
-    else: st.info("기록된 거래 데이터가 없습니다.")
+                            df_full.drop(idx).to_csv(HISTORY_FILE, index=False, encoding="utf-8-sig")
+                            st.rerun()
+    else:
+        st.info("기록된 거래 데이터가 없습니다.")
 
 # ==========================================
 # 탭 3: 관리
