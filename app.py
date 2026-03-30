@@ -1,6 +1,3 @@
-# ==========================================
-# 탭 1: 명세서 발행
-# ==========================================
 with tab1:
     selected_name = st.selectbox("거래처 선택", ["선택하세요"] + list(clients.keys()), key="main_sel")
     if selected_name != "선택하세요":
